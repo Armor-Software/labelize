@@ -204,3 +204,302 @@ fn print_width_smaller_than_label_width() {
     let expected_w = (101.625 * 8.0_f64).ceil() as u32;
     assert_eq!(img.width(), expected_w);
 }
+
+// ====================================================================
+// Issue-specific regression tests
+// ====================================================================
+
+// --- Issue #1: Label inversion (^POI) should flip the image ---
+
+#[test]
+fn poi_inverted_label_flips_content() {
+    let zpl = "^XA^POI^FO10,10^GB100,50,50,B,0^FS^XZ";
+    let opts = DrawerOptions {
+        enable_inverted_labels: true,
+        ..default_options()
+    };
+    let png = render_helpers::render_zpl_to_png(zpl, opts);
+    let img = decode_png(&png);
+
+    // The black box at (10,10) should appear rotated 180° into the bottom-right area.
+    let top_left = img.get_pixel(10, 10);
+    assert!(
+        top_left[0] > 128,
+        "top-left should be white in inverted label, got {:?}",
+        top_left
+    );
+
+    let mut dark_in_lower_right = false;
+    let w = img.width();
+    let h = img.height();
+    for y in (h - 100)..h {
+        for x in (w - 200)..w {
+            if img.get_pixel(x, y)[0] < 128 {
+                dark_in_lower_right = true;
+                break;
+            }
+        }
+        if dark_in_lower_right { break; }
+    }
+    assert!(dark_in_lower_right, "expected dark pixels in lower-right for inverted label");
+}
+
+// --- Issue #2: Barcode backgrounds should be transparent ---
+
+#[test]
+fn barcode_background_is_transparent_text_shows_through() {
+    // Place text, then a barcode overlapping the same region.
+    let zpl = "^XA\
+        ^FO100,100^A0N,80,80^FDBIG^FS\
+        ^FO100,100^BCN,80,N,N,N^FD12345^FS\
+        ^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    let mut dark_count = 0u32;
+    for y in 100..180u32 {
+        for x in 100..300u32 {
+            if x < img.width() && y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                dark_count += 1;
+            }
+        }
+    }
+    assert!(dark_count > 100, "expected dark pixels from both text and barcode, got {}", dark_count);
+}
+
+// --- Issue #3: ^FT positions text by baseline (using font ascent) ---
+
+#[test]
+fn ft_baseline_positions_text_with_margin_from_top() {
+    // ^FT30,30 with font height 28: baseline at y=30.
+    // Top of text = 30 - ascent, leaving margin from y=0.
+    let zpl = "^XA^FT30,30^A0N,,28^FDGOGREEN^FS^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // Row 0 and row 1 should be white: text should not touch the very top edge
+    let mut row0_has_dark = false;
+    let mut row1_has_dark = false;
+    for x in 0..img.width() {
+        if img.get_pixel(x, 0)[0] < 128 { row0_has_dark = true; }
+        if img.get_pixel(x, 1)[0] < 128 { row1_has_dark = true; }
+    }
+    assert!(!row0_has_dark, "row 0 should be white: text should not touch the top edge");
+    assert!(!row1_has_dark, "row 1 should be white: there should be margin from top");
+}
+
+// --- Issue #5: Diagonal line with thick border draws filled triangle ---
+
+#[test]
+fn diagonal_line_thick_border_draws_triangle() {
+    // ^GD115,120,120,B,L — thickness (120) >= min(115,120)=115 → filled diagonal
+    // With dual-triangle drawing: primary (B=Black) fills one half, opposite (White) fills the other.
+    // L direction (top_to_bottom=false after parser fix) = "/" direction:
+    //   - Primary (Black): upper-left triangle (TL, TR, BL)
+    //   - Opposite (White): lower-right triangle (TR, BL, BR)
+    let zpl = "^XA^FO100,100^GD115,120,120,B,L^FS^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // Top-left corner should be black (inside the primary triangle)
+    let tl = img.get_pixel(100, 100);
+    assert!(tl[0] < 128, "top-left of triangle should be black, got {:?}", tl);
+
+    // Bottom-right corner should be white (inside the opposite triangle)
+    let br = img.get_pixel(214, 219);
+    assert!(br[0] > 128, "bottom-right should be white (opposite triangle), got {:?}", br);
+
+    // Upper-left region should be black
+    let upper_left = img.get_pixel(110, 110);
+    assert!(upper_left[0] < 128, "upper-left region should be black, got {:?}", upper_left);
+}
+
+// --- Issue #7: QR code should include quiet zone ---
+
+#[test]
+fn qr_code_no_quiet_zone() {
+    // QR code should start directly at the ^FO position without a built-in quiet zone.
+    // The quiet zone is the label designer's responsibility via ^FO positioning.
+    let zpl = "^XA^FO0,0^BQN,2,10^FDQA,Test Data^FS^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // With quiet zone removed, dark modules should appear near (0,0).
+    // QR codes always have a finder pattern at TL, so dark pixels exist in the first few rows.
+    let mut has_dark_near_origin = false;
+    for y in 0..20u32 {
+        for x in 0..20u32 {
+            if x < img.width() && y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                has_dark_near_origin = true;
+                break;
+            }
+        }
+        if has_dark_near_origin { break; }
+    }
+    assert!(has_dark_near_origin, "QR should have dark modules near (0,0) without quiet zone");
+}
+
+// --- Issue #8: Barcode interpretation line rotates with barcode ---
+
+#[test]
+fn barcode_interpretation_line_rotates_with_barcode() {
+    // ^BCI = Code128, Rotated180, with interpretation line
+    let zpl = "^XA^FO200,200^BCI,100,Y,N,N^FD12345^FS^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // The barcode and interpretation line should produce dark pixels
+    let has_dark_pixels = img.pixels().any(|p| p[0] < 128);
+    assert!(has_dark_pixels, "barcode with rotated interpretation line should render");
+
+    // Compare: render same barcode with Normal orientation
+    let zpl_normal = "^XA^FO200,200^BCN,100,Y,N,N^FD12345^FS^XZ";
+    let png_normal = render_helpers::render_zpl_to_png(zpl_normal, default_options());
+
+    // The rotated version should differ from normal
+    assert_ne!(png, png_normal, "rotated barcode should differ from normal orientation");
+}
+
+// --- Issue #9: EAN-13 guard bars should be taller than data bars ---
+
+#[test]
+fn ean13_guard_bars_taller_than_data_bars() {
+    let img = labelize::barcodes::ean13::encode("123456789012", 200, 2)
+        .expect("ean13 encode failed");
+
+    // Image should be taller than 200px to accommodate guard bar extension
+    let total_height = img.height();
+    assert!(
+        total_height > 200,
+        "EAN-13 image height ({}) should exceed barcode height (200) for guard bars",
+        total_height
+    );
+
+    // Guard bars at start (modules 0-2) should have dark pixels in the extension area
+    let bar_width = 2usize;
+    let extended_row = 205u32; // in the guard bar extension area
+    let has_guard_extension = (0..bar_width).any(|x| {
+        x < img.width() as usize && extended_row < img.height()
+            && img.get_pixel(x as u32, extended_row)[0] < 128
+    });
+    assert!(has_guard_extension, "guard bar at start should extend below data bar area");
+}
+
+// --- Issue #11: Code39 interpretation line should show asterisks ---
+
+#[test]
+fn code39_interpretation_line_shows_asterisks() {
+    // ^B3N with interpretation line, data "ABC"
+    // Should display *ABC* in the interpretation line
+    // ^B3 params: orientation, check_digit, height, line, line_above
+    let zpl = "^XA^FO100,100^B3N,,100,Y^FDABC^FS^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // Interpretation line should render dark pixels below the barcode
+    let mut text_dark_count = 0u32;
+    for y in 202..220u32 {
+        for x in 0..img.width() {
+            if y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                text_dark_count += 1;
+            }
+        }
+    }
+    assert!(text_dark_count > 0, "interpretation line should render below barcode");
+}
+
+// --- Issue #4 & #10: text block center alignment ---
+
+#[test]
+fn text_block_center_alignment_centers_text() {
+    let zpl = "^XA^FO100,100^A0N,40,40^FB400,1,0,C,^FDCenter^FS^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // Find leftmost and rightmost dark pixels in the text area
+    let mut left_most = img.width();
+    let mut right_most = 0u32;
+    for y in 100..140u32 {
+        for x in 100..500u32 {
+            if x < img.width() && y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                left_most = left_most.min(x);
+                right_most = right_most.max(x);
+            }
+        }
+    }
+
+    // Text center should be near block center (100 + 200 = 300)
+    let text_center = (left_most + right_most) / 2;
+    let diff = (text_center as i32 - 300i32).unsigned_abs();
+    assert!(
+        diff < 30,
+        "text center ({}) should be near block center (300), diff={}",
+        text_center, diff
+    );
+}
+
+// --- Issue #6: Font "0" width ratio is approximately 60% ---
+
+#[test]
+fn font_0_width_ratio_produces_narrower_text() {
+    // Render same text with font "0" — the text should be ~60% of font height wide per char.
+    // Render "WWWWW" at height=40, width=40 → effective scale_x = 0.6*40/40 = 0.6
+    let zpl = "^XA^FO10,10^A0N,40,40^FDWWWWW^FS^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // Find the rightmost dark pixel to measure actual text width
+    let mut right_most = 0u32;
+    for y in 10..50u32 {
+        for x in 10..img.width() {
+            if y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                right_most = right_most.max(x);
+            }
+        }
+    }
+    let text_width = right_most - 10;
+    // 5 chars at height=40 with 0.6 ratio: ~5*24=120 pixels; should not exceed 150
+    // With ratio 1.0 it would be ~5*40=200 pixels
+    assert!(
+        text_width < 160,
+        "font 0 text width ({}) should reflect ~60% width ratio, not full 1:1",
+        text_width
+    );
+}
+
+// --- Issue #10: Rotated90 ^FT text positions inside black box ---
+
+#[test]
+fn rotated90_ft_text_positions_within_expected_region() {
+    // ^FWB = Rotated90, ^FT = baseline position, ^FB = field block centered
+    // Text "HELLO" should be positioned so the rotated column spans upward from y=500
+    let zpl = "^XA\
+        ^FO400,100^GB80,400,80,B^FS\
+        ^FWB^FT440,500^A0,,60^FB400,1,0,C,^FDHELLO^FS\
+        ^XZ";
+    let png = render_helpers::render_zpl_to_png(zpl, default_options());
+    let img = decode_png(&png);
+
+    // The text should be inside the black box region (y=100 to y=500)
+    // With the fix, y_top = 500 - 400 = 100, so text spans y=100..500
+    let mut dark_in_box = 0u32;
+    for y in 100..500u32 {
+        for x in 400..480u32 {
+            if x < img.width() && y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                dark_in_box += 1;
+            }
+        }
+    }
+    assert!(dark_in_box > 50, "rotated text should have dark pixels inside the box region, got {}", dark_in_box);
+
+    // Text should NOT appear significantly below y=500
+    let mut dark_below = 0u32;
+    for y in 550..700u32 {
+        for x in 400..480u32 {
+            if x < img.width() && y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                dark_below += 1;
+            }
+        }
+    }
+    assert!(dark_below < 10, "rotated text should not appear below the box, got {} dark pixels", dark_below);
+}

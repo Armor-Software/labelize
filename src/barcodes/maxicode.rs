@@ -21,7 +21,7 @@ pub fn encode(content: &str) -> Result<RgbaImage, String> {
     let img_width = cols as u32 * mod_w + mod_w;
     let img_height = rows as u32 * mod_h + mod_h;
 
-    let mut img = RgbaImage::from_pixel(img_width, img_height, Rgba([255, 255, 255, 255]));
+    let mut img = RgbaImage::from_pixel(img_width, img_height, Rgba([0, 0, 0, 0]));
     let black = Rgba([0, 0, 0, 255]);
 
     // Draw central bullseye (3 concentric circles)

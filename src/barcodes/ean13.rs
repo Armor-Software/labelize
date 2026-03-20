@@ -1,4 +1,4 @@
-use image::RgbaImage;
+use image::{Rgba, RgbaImage};
 use super::bit_matrix::BitMatrix;
 
 // EAN-13 encoding patterns
@@ -113,5 +113,36 @@ pub fn encode(content: &str, height: i32, bar_width: i32) -> Result<RgbaImage, S
     bm.set(pos, 0, true);
 
     let bw = bar_width.max(1) as usize;
-    Ok(bm.to_1d_image(bw, height.max(1) as usize))
+    let h = height.max(1) as usize;
+    // Guard bars extend further down than data bars
+    let guard_extension = (5 * bw).max((h as f32 * 0.10).ceil() as usize).max(5);
+    let total_height = h + guard_extension;
+
+    // Guard bar positions in the 95-module pattern:
+    // Start guard: modules 0-2
+    // Center guard: modules 45-49
+    // End guard: modules 92-94
+    let is_guard_module = |m: usize| -> bool {
+        m <= 2 || (45..=49).contains(&m) || m >= 92
+    };
+
+    let iw = module_count * bw;
+    let black = Rgba([0, 0, 0, 255]);
+    let mut img = RgbaImage::from_pixel(iw as u32, total_height as u32, Rgba([0, 0, 0, 0]));
+
+    for m in 0..module_count {
+        if bm.get(m, 0) {
+            let bar_h = if is_guard_module(m) { total_height } else { h };
+            for b in 0..bw {
+                let px = (m * bw + b) as u32;
+                for py in 0..bar_h as u32 {
+                    if px < img.width() {
+                        img.put_pixel(px, py, black);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(img)
 }

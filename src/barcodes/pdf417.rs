@@ -80,7 +80,7 @@ fn encode_to_image(codewords: &[u16], rows: u8, cols: u8, level: u8, truncated: 
     pdf.render(&mut storage[..]);
 
     // Convert to RGBA image
-    let mut img = RgbaImage::from_pixel(img_width, img_height, Rgba([255, 255, 255, 255]));
+    let mut img = RgbaImage::from_pixel(img_width, img_height, Rgba([0, 0, 0, 0]));
     let black = Rgba([0, 0, 0, 255]);
 
     for (idx, &is_dark) in storage.iter().enumerate() {

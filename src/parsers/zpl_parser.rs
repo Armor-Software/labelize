@@ -684,7 +684,7 @@ impl ZplParser {
             height: 1,
             border_thickness: 1,
             line_color: LineColor::Black,
-            top_to_bottom: false,
+            top_to_bottom: true,
             reverse_print: self.printer.get_reverse_print(),
         };
         if let Some(v) = parts.first().and_then(|s| parse_int(s)) { gd.width = v; }
@@ -694,7 +694,7 @@ impl ZplParser {
             gd.line_color = LineColor::White;
         }
         if parts.get(4).map_or(false, |s| *s == "L") {
-            gd.top_to_bottom = true;
+            gd.top_to_bottom = false;
         }
         Ok(Some(LabelElement::DiagonalLine(gd)))
     }

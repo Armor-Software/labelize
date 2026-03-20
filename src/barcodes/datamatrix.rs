@@ -19,7 +19,7 @@ pub fn encode(content: &str, magnification: i32) -> Result<RgbaImage, String> {
     // Render to image (no quiet zone — Labelary omits it)
     let img_width = bm_width * mag;
     let img_height = bm_height * mag;
-    let mut img = RgbaImage::from_pixel(img_width, img_height, Rgba([255, 255, 255, 255]));
+    let mut img = RgbaImage::from_pixel(img_width, img_height, Rgba([0, 0, 0, 0]));
     let black = Rgba([0, 0, 0, 255]);
 
     // pixels() yields (x, y) for each dark module

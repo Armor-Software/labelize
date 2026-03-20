@@ -95,8 +95,11 @@ impl FontInfo {
     }
 
     fn get_width_to_height_ratio(&self) -> f64 {
-        if self.name == "0" || self.name == "GS" {
+        if self.name == "GS" {
             1.0
+        } else if self.name == "0" {
+            // Zebra font 0 (smooth scalable) has ~60% width-to-height ratio
+            0.6
         } else {
             2.0
         }

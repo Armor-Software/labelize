@@ -25,18 +25,17 @@ pub fn encode(content: &str, magnification: i32, ec_level: QrErrorCorrectionLeve
     let modules = code.to_colors();
     let side = code.width() as u32;
 
-    // Render to image with quiet zone
-    let quiet_zone: u32 = 0;
-    let img_side = (side + quiet_zone * 2) * mag;
-    let mut img = RgbaImage::from_pixel(img_side, img_side, Rgba([255, 255, 255, 255]));
+    // Render to image without quiet zone — ^FO already positions the first module
+    let img_side = side * mag;
+    let mut img = RgbaImage::from_pixel(img_side, img_side, Rgba([0, 0, 0, 0]));
 
     let black = Rgba([0, 0, 0, 255]);
     for (idx, &color) in modules.iter().enumerate() {
         let row = idx as u32 / side;
         let col = idx as u32 % side;
         if color == qrcode::types::Color::Dark {
-            let px = (col + quiet_zone) * mag;
-            let py = (row + quiet_zone) * mag;
+            let px = col * mag;
+            let py = row * mag;
             for dy in 0..mag {
                 for dx in 0..mag {
                     if px + dx < img_side && py + dy < img_side {

@@ -93,14 +93,15 @@ impl Renderer {
             let offset_x = ((label_width - image_width) / 2) as i64;
 
             if invert_label {
-                // Draw inverted (rotated 180)
+                // Draw inverted (rotated 180): pixel at (x,y) in rendered content
+                // maps to (label_width - 1 - x - offset_x, image_height - 1 - y)
                 for y in 0..canvas.height() {
                     for x in 0..canvas.width() {
                         let src_pixel = *canvas.get_pixel(x, y);
-                        let dst_x = (label_width as u32 - 1 - x).wrapping_add(offset_x as u32);
+                        let dst_x = (label_width as u32 - 1 - x) as i64 - offset_x;
                         let dst_y = image_height as u32 - 1 - y;
-                        if dst_x < final_canvas.width() && dst_y < final_canvas.height() {
-                            final_canvas.put_pixel(dst_x, dst_y, src_pixel);
+                        if dst_x >= 0 && (dst_x as u32) < final_canvas.width() && dst_y < final_canvas.height() {
+                            final_canvas.put_pixel(dst_x as u32, dst_y, src_pixel);
                         }
                     }
                 }
@@ -168,8 +169,13 @@ impl Renderer {
         let scale_x = text.font.get_scale_x() as f32;
         let scale = PxScale { x: font_size * scale_x, y: font_size };
 
-        // Measure text width approximately
-        let text_width = measure_text_width(&text.text, &font, scale) as f64 * scale_x as f64;
+        // Compute font ascent for ^FT baseline positioning.
+        // Use a ZPL-proportional ascent (~78% of cell height) to match Zebra font metrics,
+        // since our substitute TTF fonts have different ascent ratios.
+        let ascent = font_size * 0.78;
+
+        // Measure text width approximately (scale already includes scale_x)
+        let text_width = measure_text_width(&text.text, &font, scale) as f64;
 
         // For field blocks, use block width for positioning instead of measured text width
         let pos_width = if let Some(ref block) = text.block {
@@ -178,7 +184,7 @@ impl Renderer {
             text_width
         };
 
-        let (x, y) = get_text_top_left_pos(text, pos_width, font_size as f64, state);
+        let (x, y) = get_text_top_left_pos(text, pos_width, font_size as f64, ascent as f64, state);
         state.update_automatic_text_position(text, pos_width);
 
         let color = Rgba([0, 0, 0, 255]);
@@ -196,7 +202,7 @@ impl Renderer {
         } else {
             // Non-normal: render to transparent buffer, rotate, then overlay
             let (buf_w, buf_h) = if let Some(ref block) = text.block {
-                let lines = word_wrap(&text.text, &font, scale, block.max_width as f32 / scale_x);
+                let lines = word_wrap(&text.text, &font, scale, block.max_width as f32);
                 let line_height = font_size * (1.0 + block.line_spacing as f32 / font_size);
                 let max_lines = block.max_lines.max(1) as usize;
                 let num_lines = lines.len().min(max_lines);
@@ -298,7 +304,49 @@ impl Renderer {
         let h = dl.height as f32;
         let thickness = dl.border_thickness.max(1);
 
-        if thickness <= 1 {
+        // When thickness >= shorter side, ZPL fills the bounding box with a diagonal split:
+        // one triangle half in the specified color, the other in the opposite color.
+        if thickness as f32 >= w.min(h) {
+            let opposite_color = match dl.line_color {
+                LineColor::White => Rgba([0, 0, 0, 255]),
+                LineColor::Black => Rgba([255, 255, 255, 255]),
+            };
+            let (primary_poly, opposite_poly) = if dl.top_to_bottom {
+                // "R" direction (\): top-left to bottom-right
+                // Primary (specified color): lower-left triangle
+                // Opposite: upper-right triangle
+                (
+                    [
+                        imageproc::point::Point::new(x as i32, y as i32),
+                        imageproc::point::Point::new(x as i32, (y + h) as i32),
+                        imageproc::point::Point::new((x + w) as i32, (y + h) as i32),
+                    ],
+                    [
+                        imageproc::point::Point::new(x as i32, y as i32),
+                        imageproc::point::Point::new((x + w) as i32, y as i32),
+                        imageproc::point::Point::new((x + w) as i32, (y + h) as i32),
+                    ],
+                )
+            } else {
+                // "L" direction (/): bottom-left to top-right
+                // Primary (specified color): upper-left triangle
+                // Opposite: lower-right triangle
+                (
+                    [
+                        imageproc::point::Point::new(x as i32, y as i32),
+                        imageproc::point::Point::new((x + w) as i32, y as i32),
+                        imageproc::point::Point::new(x as i32, (y + h) as i32),
+                    ],
+                    [
+                        imageproc::point::Point::new((x + w) as i32, y as i32),
+                        imageproc::point::Point::new(x as i32, (y + h) as i32),
+                        imageproc::point::Point::new((x + w) as i32, (y + h) as i32),
+                    ],
+                )
+            };
+            drawing::draw_polygon_mut(canvas, &primary_poly, color);
+            drawing::draw_polygon_mut(canvas, &opposite_poly, opposite_color);
+        } else if thickness <= 1 {
             if dl.top_to_bottom {
                 drawing::draw_line_segment_mut(canvas, (x, y), (x + w, y + h), color);
             } else {
@@ -456,8 +504,9 @@ impl Renderer {
         overlay_with_rotation(canvas, &img, &pos, bc.barcode.orientation);
 
         if bc.barcode.line {
+            let display_text = format!("*{}*", bc.data);
             draw_barcode_interpretation_line(
-                canvas, &bc.data, &pos, &img,
+                canvas, &display_text, &pos, &img,
                 bc.barcode.orientation, bc.barcode.line_above,
             );
         }
@@ -587,14 +636,14 @@ fn draw_text_block(
     canvas: &mut RgbaImage,
     font: &FontRef,
     scale: PxScale,
-    scale_x: f32,
+    _scale_x: f32,
     color: Rgba<u8>,
     x: f32,
     y: f32,
     block: &crate::elements::field_block::FieldBlock,
     text: &str,
 ) {
-    let max_width = block.max_width as f32 / scale_x;
+    let max_width = block.max_width as f32;
     let lines = word_wrap(text, font, scale, max_width);
     let font_size = scale.y;
     let line_height = font_size * (1.0 + block.line_spacing as f32 / font_size);
@@ -607,11 +656,11 @@ fn draw_text_block(
         }
         let lx = match block.alignment {
             crate::elements::text_alignment::TextAlignment::Center => {
-                let lw = measure_text_width(line, font, scale) * scale_x;
+                let lw = measure_text_width(line, font, scale);
                 x + (block.max_width as f32 - lw) / 2.0
             }
             crate::elements::text_alignment::TextAlignment::Right => {
-                let lw = measure_text_width(line, font, scale) * scale_x;
+                let lw = measure_text_width(line, font, scale);
                 x + block.max_width as f32 - lw
             }
             _ => x,
@@ -621,7 +670,7 @@ fn draw_text_block(
     }
 }
 
-fn get_text_top_left_pos(text: &TextField, w: f64, h: f64, state: &DrawerState) -> (f64, f64) {
+fn get_text_top_left_pos(text: &TextField, w: f64, h: f64, ascent: f64, state: &DrawerState) -> (f64, f64) {
     let (x, y) = state.get_text_position(text);
 
     if !text.position.calculate_from_bottom {
@@ -633,12 +682,14 @@ fn get_text_top_left_pos(text: &TextField, w: f64, h: f64, state: &DrawerState) 
 
     // ^FT: position is baseline (bottom-left for Normal).
     // Convert to top-left of the rendering area.
+    // Use ascent (not full height) for the baseline-to-top distance of the last line.
+    // Use full font height h for line spacing between lines.
     let lines = if let Some(ref block) = text.block { block.max_lines.max(1) as f64 } else { 1.0 };
     let spacing = if let Some(ref block) = text.block { block.line_spacing as f64 } else { 0.0 };
-    let total_h = h + (lines - 1.0) * (h + spacing);
+    let total_h = ascent + (lines - 1.0) * (h + spacing);
 
     match text.font.orientation {
-        FieldOrientation::Rotated90 => (x, y),
+        FieldOrientation::Rotated90 => (x, y - w),
         FieldOrientation::Rotated180 => (x - w, y),
         FieldOrientation::Rotated270 => (x - total_h, y - w),
         _ => (x, y - total_h),
@@ -862,41 +913,61 @@ fn draw_barcode_interpretation_line(
     let bw = barcode_img.width() as i32;
     let bh = barcode_img.height() as i32;
 
-    let (tx, ty) = match orientation {
+    match orientation {
         FieldOrientation::Normal => {
             let cx = pos.x + (bw - text_width as i32) / 2;
-            if line_above {
-                (cx, pos.y - font_size as i32 - 2)
+            let ty = if line_above {
+                pos.y - font_size as i32 - 2
             } else {
-                (cx, pos.y + bh + 2)
-            }
+                pos.y + bh + 2
+            };
+            let color = Rgba([0, 0, 0, 255]);
+            drawing::draw_text_mut(canvas, color, cx, ty, scale, &font, &display);
         }
-        FieldOrientation::Rotated90 => {
-            let cx = pos.x + (bh - text_width as i32) / 2;
-            if line_above {
-                (cx, pos.y - font_size as i32 - 2)
-            } else {
-                (cx, pos.y + bw + 2)
-            }
-        }
-        FieldOrientation::Rotated180 => {
-            let cx = pos.x + (bw - text_width as i32) / 2;
-            if line_above {
-                (cx, pos.y + bh + 2)
-            } else {
-                (cx, pos.y - font_size as i32 - 2)
-            }
-        }
-        FieldOrientation::Rotated270 => {
-            let cx = pos.x + (bh - text_width as i32) / 2;
-            if line_above {
-                (cx, pos.y + bw + 2)
-            } else {
-                (cx, pos.y - font_size as i32 - 2)
-            }
-        }
-    };
+        _ => {
+            // Render text to buffer, rotate to match barcode orientation, then overlay
+            let buf_w = (text_width.ceil() as u32).max(1) + 2;
+            let buf_h = font_size.ceil() as u32 + 2;
+            let mut buf = RgbaImage::from_pixel(buf_w, buf_h, Rgba([0, 0, 0, 0]));
+            let color = Rgba([0, 0, 0, 255]);
+            drawing::draw_text_mut(&mut buf, color, 0, 0, scale, &font, &display);
 
-    let color = Rgba([0, 0, 0, 255]);
-    drawing::draw_text_mut(canvas, color, tx, ty, scale, &font, &display);
+            let rotated = match orientation {
+                FieldOrientation::Rotated90 => rotate_90(&buf),
+                FieldOrientation::Rotated180 => rotate_180(&buf),
+                FieldOrientation::Rotated270 => rotate_270(&buf),
+                _ => buf,
+            };
+
+            // Position: center text along the barcode edge
+            let (tx, ty) = match orientation {
+                FieldOrientation::Rotated90 => {
+                    let cy = pos.y + (bw - text_width as i32) / 2;
+                    if line_above {
+                        (pos.x - rotated.width() as i32 - 2, cy)
+                    } else {
+                        (pos.x + bh + 2, cy)
+                    }
+                }
+                FieldOrientation::Rotated180 => {
+                    let cx = pos.x + (bw - text_width as i32) / 2;
+                    if line_above {
+                        (cx, pos.y + bh + 2)
+                    } else {
+                        (cx, pos.y - rotated.height() as i32 - 2)
+                    }
+                }
+                FieldOrientation::Rotated270 => {
+                    let cy = pos.y + (bw - text_width as i32) / 2;
+                    if line_above {
+                        (pos.x + bh + 2, cy)
+                    } else {
+                        (pos.x - rotated.width() as i32 - 2, cy)
+                    }
+                }
+                _ => (0, 0),
+            };
+            overlay_at(canvas, &rotated, tx, ty);
+        }
+    }
 }
