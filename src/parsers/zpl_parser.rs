@@ -285,19 +285,41 @@ impl ZplParser {
         };
 
         if !font.is_standard_font() {
-            font.name = self.printer.default_font.name.clone();
+            // Numeric font names (1-9) are user-installed fonts on Zebra printers.
+            // Fall back to font "0" (proportional) rather than font "A" (monospaced).
+            if font.name.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                font.name = "0".to_string();
+            } else {
+                font.name = self.printer.default_font.name.clone();
+            }
         }
 
-        if first.len() > 1 {
-            font.orientation = to_field_orientation(first[1]);
-        }
+        // After font name character, check if next char is a valid orientation letter.
+        // If it's a digit or missing, the remainder is height (^A048,40 = font 0, h=48, w=40).
+        let (extra_height_str, height_part_idx, width_part_idx) = if first.len() > 1 {
+            let second = first[1];
+            if matches!(second, b'N' | b'R' | b'I' | b'B' | b'n' | b'r' | b'i' | b'b') {
+                font.orientation = to_field_orientation(second);
+                (None, 1usize, 2usize)
+            } else {
+                // No valid orientation: remaining chars in first part are height digits
+                let height_str = std::str::from_utf8(&first[1..]).unwrap_or("");
+                (Some(height_str.to_string()), usize::MAX, 1usize)
+            }
+        } else {
+            (None, 1, 2)
+        };
 
-        if let Some(s) = parts.get(1) {
+        if let Some(hs) = extra_height_str {
+            if let Some(v) = parse_int(&hs) {
+                font.height = v as f64;
+            }
+        } else if let Some(s) = parts.get(height_part_idx) {
             if let Some(v) = parse_int(s) {
                 font.height = v as f64;
             }
         }
-        if let Some(s) = parts.get(2) {
+        if let Some(s) = parts.get(width_part_idx) {
             if let Some(v) = parse_int(s) {
                 font.width = v as f64;
             }
@@ -908,33 +930,27 @@ fn split_zpl_commands(zpl_data: &[u8]) -> Result<Vec<String>, String> {
     let data_str = String::from_utf8_lossy(zpl_data);
     let data = data_str.replace('\n', "").replace('\r', "").replace('\t', "");
 
-    let mut caret = b'^';
-    let mut tilde = b'~';
+    let mut caret = '^';
+    let mut tilde = '~';
 
     let mut buff = String::new();
     let mut results = Vec::new();
 
-    let bytes = data.as_bytes();
-    let len = bytes.len();
-
-    for i in 0..len {
-        let c = bytes[i];
-        let command = &buff;
-
+    for ch in data.chars() {
         let mut is_ct = false;
         let mut is_cc = false;
         if buff.len() == 4 {
-            is_ct = command.contains("CT") && command.as_bytes().first() == Some(&caret);
-            is_cc = command.contains("CC") && command.as_bytes().first() == Some(&caret);
+            is_ct = buff.contains("CT") && buff.starts_with(caret);
+            is_cc = buff.contains("CC") && buff.starts_with(caret);
         }
 
-        if c == caret || c == tilde || is_ct || is_cc {
+        if ch == caret || ch == tilde || is_ct || is_cc {
             let normalized = normalize_command(&buff, tilde, caret);
 
             if is_ct && normalized.len() >= 4 {
-                tilde = normalized.as_bytes()[3];
+                tilde = normalized.chars().nth(3).unwrap_or('~');
             } else if is_cc && normalized.len() >= 4 {
-                caret = normalized.as_bytes()[3];
+                caret = normalized.chars().nth(3).unwrap_or('^');
             } else if !normalized.is_empty() {
                 results.push(normalized);
             }
@@ -942,7 +958,7 @@ fn split_zpl_commands(zpl_data: &[u8]) -> Result<Vec<String>, String> {
             buff.clear();
         }
 
-        buff.push(c as char);
+        buff.push(ch);
     }
 
     if !buff.is_empty() {
@@ -955,16 +971,17 @@ fn split_zpl_commands(zpl_data: &[u8]) -> Result<Vec<String>, String> {
     Ok(results)
 }
 
-fn normalize_command(command: &str, tilde: u8, caret: u8) -> String {
+fn normalize_command(command: &str, tilde: char, caret: char) -> String {
     if command.is_empty() {
         return String::new();
     }
     let mut cmd = command.to_string();
-    if caret != b'^' && cmd.as_bytes()[0] == caret {
-        cmd = format!("^{}", &cmd[1..]);
+    let first = cmd.chars().next().unwrap();
+    if caret != '^' && first == caret {
+        cmd = format!("^{}", &cmd[first.len_utf8()..]);
     }
-    if tilde != b'~' && cmd.as_bytes()[0] == tilde {
-        cmd = format!("~{}", &cmd[1..]);
+    if tilde != '~' && first == tilde {
+        cmd = format!("~{}", &cmd[first.len_utf8()..]);
     }
     cmd.trim_start().to_string()
 }

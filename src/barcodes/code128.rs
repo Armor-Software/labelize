@@ -77,8 +77,12 @@ pub fn encode_auto(content: &str, height: i32, bar_width: i32) -> Result<RgbaIma
     let mut codes: Vec<u8> = Vec::new();
     let chars: Vec<char> = content.chars().collect();
 
-    // Auto-detect start: if content begins with 4+ digits, start with Code C
-    let leading_digits = count_digits(&chars, 0);
+    // Auto-detect start: skip leading FNC1 chars, then check for 4+ digits
+    let mut skip = 0;
+    while skip < chars.len() && chars[skip] == ESCAPE_FNC_1 {
+        skip += 1;
+    }
+    let leading_digits = count_digits(&chars, skip);
     let mut current_set = if leading_digits >= 4 { 'C' } else { 'B' };
 
     let start_code = if current_set == 'C' { CODE_C_START } else { CODE_B_START };
@@ -89,6 +93,15 @@ pub fn encode_auto(content: &str, height: i32, bar_width: i32) -> Result<RgbaIma
 
     while i < chars.len() {
         let ch = chars[i];
+
+        // FNC1 is valid in any code set
+        if ch == ESCAPE_FNC_1 {
+            codes.push(FNC1);
+            checksum += FNC1 as u32 * weight;
+            weight += 1;
+            i += 1;
+            continue;
+        }
 
         // Auto-optimize: if in A/B and 4+ digits ahead, switch to C
         if current_set != 'C' {
@@ -118,12 +131,8 @@ pub fn encode_auto(content: &str, height: i32, bar_width: i32) -> Result<RgbaIma
             }
         }
 
-        let code = if ch == ESCAPE_FNC_1 {
-            FNC1
-        } else {
-            let b = ch as u8;
-            if b >= 32 && b <= 127 { b - 32 } else { 0 }
-        };
+        let b = ch as u8;
+        let code = if b >= 32 && b <= 127 { b - 32 } else { 0 };
         codes.push(code);
         checksum += code as u32 * weight;
         weight += 1;
@@ -149,7 +158,7 @@ const FNC1: u8 = 102;
 
 pub fn encode_no_mode(content: &str, height: i32, bar_width: i32) -> Result<(RgbaImage, String), String> {
     // In no-mode, subset codes like >: >; >9 >0 etc. select subsets
-    // Auto-optimize: switch to Code C for runs of 4+ digits
+    // Only auto-optimize when an explicit start set prefix is given.
     let mut codes: Vec<u8> = Vec::new();
     let mut text = String::new();
 
@@ -168,8 +177,9 @@ pub fn encode_no_mode(content: &str, height: i32, bar_width: i32) -> Result<(Rgb
         None
     };
 
-    // Auto-detect optimal start set: if remaining data starts with 4+ digits
-    // (looking past any FNC1 prefix), use Code C
+    // Auto-detect optimal start set only when an explicit prefix was given.
+    // Mode N without prefix always starts in Code B per ZPL spec.
+    let auto_optimize = requested_set.is_some();
     let mut lookahead = i;
     while lookahead + 1 < chars.len() && chars[lookahead] == '>' && chars[lookahead + 1] == '8' {
         lookahead += 2; // skip >8 (FNC1) when looking for digits
@@ -177,14 +187,14 @@ pub fn encode_no_mode(content: &str, height: i32, bar_width: i32) -> Result<(Rgb
     let digit_run = count_digits(&chars, lookahead);
     let mut current_set = match requested_set {
         Some(s) => {
-            if s != 'C' && digit_run >= 4 {
+            if s != 'C' && digit_run >= 4 && auto_optimize {
                 'C' // Override to Code C for digit-heavy data
             } else {
                 s
             }
         }
         None => {
-            if digit_run >= 4 { 'C' } else { 'B' }
+            'B' // Mode N defaults to Code B
         }
     };
 
@@ -238,7 +248,16 @@ pub fn encode_no_mode(content: &str, height: i32, bar_width: i32) -> Result<(Rgb
                     weight += 1;
                     true
                 }
-                // >7 = shift to lower Code A (handle as regular chars for now)
+                // >7 = Code C switch (alternate). Skip prefix from display text.
+                '7' => {
+                    if current_set != 'C' {
+                        codes.push(CODE_C_SWITCH);
+                        checksum += CODE_C_SWITCH as u32 * weight;
+                        weight += 1;
+                        current_set = 'C';
+                    }
+                    true
+                }
                 _ => false,
             };
             if handled {
@@ -248,7 +267,8 @@ pub fn encode_no_mode(content: &str, height: i32, bar_width: i32) -> Result<(Rgb
         }
 
         // Auto-optimize: if in Code A/B and there are 4+ consecutive digits, switch to C
-        if current_set != 'C' {
+        // Only do this when an explicit start prefix was given (auto_optimize mode).
+        if auto_optimize && current_set != 'C' {
             let digit_run = count_digits(&chars, i);
             if digit_run >= 4 {
                 codes.push(CODE_C_SWITCH);

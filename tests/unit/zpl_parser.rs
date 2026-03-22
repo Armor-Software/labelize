@@ -281,3 +281,55 @@ fn multiple_elements_in_one_label() {
     assert_eq!(labels.len(), 1);
     assert!(labels[0].elements.len() >= 2, "expected at least 2 elements");
 }
+
+// --- ^A font parsing edge cases ---
+
+#[test]
+fn font_a0_without_orientation_comma() {
+    // ^A048,40 should be parsed as font=0, height=48, width=40
+    // (not font=0, orientation=4(invalid), height=40, width=default)
+    let labels = parse("^XA^FO50,50^A048,40^FDTest^FS^XZ");
+    let text = labels[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            LabelElement::Text(t) => Some(t),
+            _ => None,
+        })
+        .expect("expected Text element");
+    assert_eq!(text.font.height, 48.0, "^A048,40 should have height=48");
+    assert_eq!(text.font.width, 40.0, "^A048,40 should have width=40");
+}
+
+#[test]
+fn font_a0_with_valid_orientation() {
+    // ^A0R,30,25 should be font=0, orientation=R, height=30, width=25
+    let labels = parse("^XA^FO50,50^A0R,30,25^FDTest^FS^XZ");
+    let text = labels[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            LabelElement::Text(t) => Some(t),
+            _ => None,
+        })
+        .expect("expected Text element");
+    assert_eq!(text.font.height, 30.0);
+    assert_eq!(text.font.width, 25.0);
+}
+
+// --- ^FO right-justification ---
+
+#[test]
+fn fo_right_justification() {
+    // ^FO775,325,1 should set alignment to Right
+    let labels = parse("^XA^FO775,325,1^A0N,30,30^FD0003^FS^XZ");
+    let text = labels[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            LabelElement::Text(t) => Some(t),
+            _ => None,
+        })
+        .expect("expected Text element");
+    assert_eq!(text.alignment, labelize::elements::field_alignment::FieldAlignment::Right);
+}

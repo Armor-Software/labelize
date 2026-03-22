@@ -61,13 +61,13 @@ pub fn encode(content: &str, height: i32, wide_bar_ratio: i32, narrow_bar: i32) 
     let wide = (narrow_bar * wide_bar_ratio).max(2) as usize;
     let interchar_gap = narrow;
 
-    // Calculate width
+    // Calculate width (no quiet zones — Labelary convention)
     let char_count = content.len() + 2; // + start/stop asterisks
     let bars_per_char = 6 * narrow + 3 * wide; // 6 narrow + 3 wide per character
-    let total_width = char_count * bars_per_char + (char_count - 1) * interchar_gap + 20 * narrow; // quiet zones
+    let total_width = char_count * bars_per_char + (char_count - 1) * interchar_gap;
 
     let mut bm = BitMatrix::new(total_width, 1);
-    let mut pos = 10 * narrow;
+    let mut pos = 0;
 
     let full_content = format!("*{}*", content.to_ascii_uppercase());
     for (ci, ch) in full_content.chars().enumerate() {

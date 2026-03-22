@@ -98,10 +98,13 @@ impl FontInfo {
         if self.name == "GS" {
             1.0
         } else if self.name == "0" {
-            // Zebra font 0 (smooth scalable) has ~60% width-to-height ratio
-            0.6
+            // Zebra font 0 (smooth scalable) width-to-height ratio.
+            // Calibrated via sweep: 0.55 minimizes moderate-diff labels overall.
+            0.55
         } else {
-            2.0
+            // Bitmap fonts A-H use DejaVu Mono (advance/em = 0.602051).
+            // Ratio = 1/0.602051 so that advance * ratio * w = w (one char = w dots).
+            1.661
         }
     }
 }

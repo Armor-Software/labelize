@@ -28,76 +28,81 @@ predecessor because Labelary does not support EPL.
 
 ## Per-Label Thresholds
 
-Each label has a CI tolerance set to **current diff + 2 % headroom**.
+Each label has a CI tolerance set slightly above the current diff to catch regressions.
 If a future change raises the diff beyond this ceiling the golden test fails.
 
 | Label | Ext | Diff % | Tolerance | Primary diff source |
 |-------|-----|--------|-----------|---------------------|
-| amazon | zpl | 5.78 | 8.0 | Font metrics |
-| aztec_ec | zpl | 8.07 | 10.0 | Aztec barcode encoding |
-| barcode128_default_width | zpl | 0.72 | 3.0 | Sub-pixel barcode bars |
-| barcode128_line | zpl | 0.23 | 3.0 | Sub-pixel |
-| barcode128_line_above | zpl | 0.26 | 3.0 | Sub-pixel |
-| barcode128_mode_a | zpl | 0.72 | 3.0 | Sub-pixel |
-| barcode128_mode_d | zpl | 2.90 | 5.0 | Font + barcode bars |
-| barcode128_mode_n | zpl | 0.72 | 3.0 | Sub-pixel |
-| barcode128_mode_n_cba_sets | zpl | 1.40 | 4.0 | Barcode set switching |
-| barcode128_mode_u | zpl | 3.32 | 5.5 | Font metrics |
-| barcode128_rotated | zpl | 0.23 | 3.0 | Sub-pixel |
+| amazon | zpl | 2.81 | 4.0 | Font metrics |
+| aztec_ec | zpl | 8.07 | 9.0 | Aztec barcode encoding |
+| barcode128_default_width | zpl | 0.63 | 2.0 | Sub-pixel barcode bars |
+| barcode128_line | zpl | 0.23 | 2.0 | Sub-pixel |
+| barcode128_line_above | zpl | 0.26 | 2.0 | Sub-pixel |
+| barcode128_mode_a | zpl | 0.63 | 2.0 | Sub-pixel |
+| barcode128_mode_d | zpl | 0.63 | 2.0 | Sub-pixel barcode bars |
+| barcode128_mode_n | zpl | 0.63 | 2.0 | Sub-pixel |
+| barcode128_mode_n_cba_sets | zpl | 0.38 | 2.0 | Barcode set switching |
+| barcode128_mode_u | zpl | 2.20 | 3.0 | Font metrics |
+| barcode128_rotated | zpl | 0.27 | 2.0 | Sub-pixel |
 | bstc | zpl | 0.00 | 1.0 | Perfect |
-| dbs | zpl | 9.69 | 12.0 | GFA graphics + font |
-| dhlecommercetr | zpl | 5.47 | 8.0 | Font metrics |
-| dhlpaket | zpl | 8.53 | 11.0 | GFA graphics + font |
-| dhlparceluk | zpl | 5.98 | 8.0 | Font metrics |
-| dpdpl | zpl | 7.60 | 10.0 | Font metrics |
-| dpduk | epl | 5.83 | 8.0 | EPL reference from Go renderer |
-| ean13 | zpl | 0.88 | 3.0 | Sub-pixel |
-| encodings_013 | zpl | 2.18 | 5.0 | Character encoding |
-| fedex | zpl | 18.26 | 20.0 | PDF417 encoding + font |
+| dbs | zpl | 5.27 | 6.0 | Font metrics |
+| dhlecommercetr | zpl | 5.00 | 6.0 | Font metrics |
+| dhlpaket | zpl | 2.68 | 4.0 | Font metrics |
+| dhlparceluk | zpl | 4.69 | 5.5 | Font metrics |
+| dpdpl | zpl | 7.12 | 8.0 | Font metrics |
+| dpduk | epl | 5.79 | 6.5 | EPL reference from Go renderer |
+| ean13 | zpl | 2.84 | 3.0 | Sub-pixel barcode bars |
+| edi_triangle | zpl | 0.63 | 2.0 | Sub-pixel |
+| encodings_013 | zpl | 1.91 | 3.0 | Character encoding |
+| fedex | zpl | 7.91 | 9.0 | PDF417 encoding + font |
 | gb_0_height | zpl | 0.00 | 1.0 | Perfect |
 | gb_0_width | zpl | 0.00 | 1.0 | Perfect |
 | gb_normal | zpl | 0.00 | 1.0 | Perfect |
 | gb_rounded | zpl | 0.07 | 1.0 | Rounding artefacts |
-| glscz | zpl | 4.25 | 7.0 | Font metrics |
-| glsdk_return | zpl | 7.11 | 10.0 | Font metrics |
-| gs | zpl | 1.01 | 3.0 | Graphic symbol font |
-| icapaket | zpl | 5.14 | 8.0 | Font metrics |
-| jcpenney | zpl | 7.18 | 10.0 | Font metrics |
-| kmart | zpl | 8.75 | 11.0 | Font metrics |
-| labelary | zpl | 9.84 | 12.0 | Font metrics + Code128 |
-| pnldpd | zpl | 13.58 | 16.0 | GFA graphics + Aztec + Code128 |
-| pocztex | zpl | 7.94 | 10.0 | Font metrics |
-| porterbuddy | zpl | 13.79 | 16.0 | GFA graphics + QR code |
-| posten | zpl | 4.74 | 7.0 | Font metrics |
-| qr_code_ft_manual | zpl | 3.00 | 5.0 | QR barcode + position |
-| qr_code_offset | zpl | 1.69 | 4.0 | QR position offset |
-| return_qrcode | zpl | 6.08 | 8.5 | QR + font |
-| reverse | zpl | 0.79 | 3.0 | Sub-pixel |
-| reverse_qr | zpl | 2.98 | 5.0 | QR barcode |
-| swisspost | zpl | 1.94 | 4.0 | Font metrics |
-| templating | zpl | 4.89 | 7.0 | Font metrics |
-| text_fallback_default | zpl | 4.66 | 7.0 | Font metrics |
-| text_fo_b | zpl | 0.11 | 2.0 | Sub-pixel |
-| text_fo_i | zpl | 0.11 | 2.0 | Sub-pixel |
-| text_fo_n | zpl | 0.10 | 2.0 | Sub-pixel |
-| text_fo_r | zpl | 0.10 | 2.0 | Sub-pixel |
-| text_ft_auto_pos | zpl | 1.55 | 4.0 | Auto-position cursor |
-| text_ft_b | zpl | 0.04 | 2.0 | Sub-pixel |
-| text_ft_i | zpl | 0.04 | 2.0 | Sub-pixel |
-| text_ft_n | zpl | 0.14 | 2.0 | Sub-pixel |
-| text_ft_r | zpl | 0.15 | 2.0 | Sub-pixel |
-| text_multiline | zpl | 0.68 | 3.0 | Word-wrap boundaries |
-| ups | zpl | 25.19 | 28.0 | MaxiCode (no encoder) |
-| ups_surepost | zpl | 35.61 | 38.0 | MaxiCode (no encoder) |
-| usps | zpl | 5.63 | 8.0 | Font metrics |
+| gd_default_params | zpl | 0.29 | 1.0 | Sub-pixel diagonal |
+| gd_thick | zpl | 3.90 | 4.5 | Diagonal rendering |
+| gd_thin_l | zpl | 0.07 | 2.0 | Sub-pixel |
+| gd_thin_r | zpl | 0.08 | 2.0 | Sub-pixel |
+| glscz | zpl | 3.19 | 5.0 | Font metrics |
+| glsdk_return | zpl | 6.45 | 7.0 | DataMatrix + font metrics |
+| gs | zpl | 1.01 | 2.0 | Graphic symbol font |
+| icapaket | zpl | 5.39 | 6.0 | Font metrics |
+| jcpenney | zpl | 6.88 | 8.0 | Font metrics |
+| kmart | zpl | 8.39 | 9.0 | Font metrics |
+| labelary | zpl | 4.48 | 5.5 | Font metrics + Code128 |
+| pnldpd | zpl | 13.78 | 14.5 | Aztec + font metrics |
+| pocztex | zpl | 4.56 | 5.5 | Font metrics |
+| porterbuddy | zpl | 9.04 | 10.0 | QR code + font metrics |
+| posten | zpl | 3.61 | 5.0 | Font metrics |
+| qr_code_ft_manual | zpl | 2.74 | 4.0 | QR barcode + position |
+| qr_code_offset | zpl | 1.67 | 3.0 | QR position offset |
+| return_qrcode | zpl | 6.08 | 7.0 | QR + font |
+| reverse | zpl | 0.80 | 2.0 | Sub-pixel |
+| reverse_qr | zpl | 3.50 | 5.0 | QR barcode |
+| swisspost | zpl | 1.81 | 3.0 | Font metrics |
+| templating | zpl | 1.34 | 3.0 | Font metrics |
+| text_fallback_default | zpl | 4.25 | 5.0 | Font metrics |
+| text_fo_b | zpl | 0.10 | 1.0 | Sub-pixel |
+| text_fo_i | zpl | 0.10 | 1.0 | Sub-pixel |
+| text_fo_n | zpl | 0.10 | 1.0 | Sub-pixel |
+| text_fo_r | zpl | 0.10 | 1.0 | Sub-pixel |
+| text_ft_auto_pos | zpl | 1.32 | 3.0 | Auto-position cursor |
+| text_ft_b | zpl | 0.03 | 1.0 | Sub-pixel |
+| text_ft_i | zpl | 0.04 | 1.0 | Sub-pixel |
+| text_ft_n | zpl | 0.10 | 1.0 | Sub-pixel |
+| text_ft_r | zpl | 0.16 | 1.0 | Sub-pixel |
+| text_multiline | zpl | 0.68 | 2.0 | Word-wrap boundaries |
+| ups | zpl | 7.65 | 9.0 | MaxiCode + font metrics |
+| ups_surepost | zpl | 10.95 | 12.0 | MaxiCode + font metrics |
+| usps | zpl | 4.97 | 6.0 | Font metrics |
 
 ## Known Limitations
 
 ### MaxiCode (ups, ups_surepost)
-MaxiCode is a proprietary 2D symbology used by UPS. No Rust encoding library
-exists. The current encoder draws the correct bullseye and hexagonal grid
-structure but the data encoding is not standards-compliant. These labels will
-remain HIGH until a proper encoder is implemented.
+MaxiCode is a proprietary 2D symbology used by UPS. The current encoder
+draws the correct bullseye and hexagonal grid structure but the data encoding
+differs from Labelary's. These labels remain MODERATE due to combined MaxiCode
+and font metric differences.
 
 ### PDF417 (fedex)
 The `pdf417` crate produces **valid, scannable** barcodes, but the specific
@@ -111,10 +116,12 @@ stem from error correction level defaults and symbol sizing when the ZPL
 parameters leave the size open.
 
 ### Font Rendering
-Labelize uses `ab_glyph` with Helvetica Bold Condensed for font 0 and
-DejaVu Sans Mono variants for bitmap fonts A–H. Labelary uses its own
-proprietary font set. Character advance widths and hinting differ between
-engines, causing 1–10 % diffs on text-heavy labels.
+Labelize uses `ab_glyph` with Helvetica Bold Condensed for font 0 (width ratio
+0.55) and DejaVu Sans Mono variants for bitmap fonts A–H (width ratio 1.661).
+Labelary uses its own proprietary font set. Character advance widths and hinting
+differ between engines, causing 1–10 % diffs on text-heavy labels. The font 0
+ratio of 0.55 was calibrated via systematic sweep over 0.53–0.60 to minimize
+the number of moderate-diff labels.
 
 ### GFA Graphics
 Embedded `^GFA` hex graphics are decoded and rasterised accurately. Remaining

@@ -317,26 +317,38 @@ fn diagonal_line_thick_border_draws_triangle() {
 // --- Issue #7: QR code should include quiet zone ---
 
 #[test]
-fn qr_code_no_quiet_zone() {
-    // QR code should start directly at the ^FO position without a built-in quiet zone.
-    // The quiet zone is the label designer's responsibility via ^FO positioning.
+fn qr_code_has_quiet_zone() {
+    // QR code per ZPL spec includes a 4-module quiet zone around the code.
+    // With magnification=10, the quiet zone is 40 pixels wide.
     let zpl = "^XA^FO0,0^BQN,2,10^FDQA,Test Data^FS^XZ";
     let png = render_helpers::render_zpl_to_png(zpl, default_options());
     let img = decode_png(&png);
 
-    // With quiet zone removed, dark modules should appear near (0,0).
-    // QR codes always have a finder pattern at TL, so dark pixels exist in the first few rows.
-    let mut has_dark_near_origin = false;
-    for y in 0..20u32 {
-        for x in 0..20u32 {
+    // The first 40 pixels (4 modules * mag 10) should be white (quiet zone).
+    let mut all_white_near_origin = true;
+    for y in 0..39u32 {
+        for x in 0..39u32 {
             if x < img.width() && y < img.height() && img.get_pixel(x, y)[0] < 128 {
-                has_dark_near_origin = true;
+                all_white_near_origin = false;
                 break;
             }
         }
-        if has_dark_near_origin { break; }
+        if !all_white_near_origin { break; }
     }
-    assert!(has_dark_near_origin, "QR should have dark modules near (0,0) without quiet zone");
+    assert!(all_white_near_origin, "QR should have white quiet zone near (0,0)");
+
+    // Dark pixels should appear starting around pixel 40 (quiet_zone * magnification).
+    let mut has_dark_after_quiet = false;
+    for y in 40..60u32 {
+        for x in 40..60u32 {
+            if x < img.width() && y < img.height() && img.get_pixel(x, y)[0] < 128 {
+                has_dark_after_quiet = true;
+                break;
+            }
+        }
+        if has_dark_after_quiet { break; }
+    }
+    assert!(has_dark_after_quiet, "QR should have dark modules after quiet zone");
 }
 
 // --- Issue #8: Barcode interpretation line rotates with barcode ---

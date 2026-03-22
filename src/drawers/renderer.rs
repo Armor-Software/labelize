@@ -282,14 +282,39 @@ impl Renderer {
         let color = line_color_to_rgba(gc.line_color);
         let cx = gc.position.x as f32 + gc.circle_diameter as f32 / 2.0;
         let cy = gc.position.y as f32 + gc.circle_diameter as f32 / 2.0;
-        let radius = gc.circle_diameter as f32 / 2.0;
+        let outer_r = gc.circle_diameter as f32 / 2.0;
+        let thickness = gc.border_thickness.max(1) as f32;
 
-        drawing::draw_hollow_circle_mut(
-            canvas,
-            (cx as i32, cy as i32),
-            radius as i32,
-            color,
-        );
+        if thickness >= outer_r {
+            // Filled circle
+            drawing::draw_filled_circle_mut(
+                canvas,
+                (cx as i32, cy as i32),
+                outer_r as i32,
+                color,
+            );
+        } else {
+            // Ring: draw filled outer, then erase inner with opposite pass
+            // Use per-pixel distance check for accurate ring rendering
+            let inner_r = outer_r - thickness;
+            let outer_r_sq = outer_r * outer_r;
+            let inner_r_sq = inner_r * inner_r;
+            let (w, h) = canvas.dimensions();
+            let min_x = ((cx - outer_r - 1.0).max(0.0)) as u32;
+            let max_x = ((cx + outer_r + 1.0).min(w as f32 - 1.0)) as u32;
+            let min_y = ((cy - outer_r - 1.0).max(0.0)) as u32;
+            let max_y = ((cy + outer_r + 1.0).min(h as f32 - 1.0)) as u32;
+            for py in min_y..=max_y {
+                for px in min_x..=max_x {
+                    let dx = px as f32 - cx;
+                    let dy = py as f32 - cy;
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq <= outer_r_sq && dist_sq >= inner_r_sq {
+                        canvas.put_pixel(px, py, color);
+                    }
+                }
+            }
+        }
     }
 
     fn draw_diagonal_line(
@@ -304,56 +329,15 @@ impl Renderer {
         let h = dl.height as f32;
         let thickness = dl.border_thickness.max(1);
 
-        // When thickness >= shorter side, ZPL fills the bounding box with a diagonal split:
-        // one triangle half in the specified color, the other in the opposite color.
-        if thickness as f32 >= w.min(h) {
-            let opposite_color = match dl.line_color {
-                LineColor::White => Rgba([0, 0, 0, 255]),
-                LineColor::Black => Rgba([255, 255, 255, 255]),
-            };
-            let (primary_poly, opposite_poly) = if dl.top_to_bottom {
-                // "L" direction (\): top-left to bottom-right
-                // Primary (specified color): upper-right triangle (above the diagonal)
-                // Opposite: lower-left triangle (below the diagonal)
-                (
-                    [
-                        imageproc::point::Point::new(x as i32, y as i32),
-                        imageproc::point::Point::new((x + w) as i32, y as i32),
-                        imageproc::point::Point::new((x + w) as i32, (y + h) as i32),
-                    ],
-                    [
-                        imageproc::point::Point::new(x as i32, y as i32),
-                        imageproc::point::Point::new(x as i32, (y + h) as i32),
-                        imageproc::point::Point::new((x + w) as i32, (y + h) as i32),
-                    ],
-                )
-            } else {
-                // "R" direction (/): bottom-left to top-right
-                // Primary (specified color): upper-left triangle (above the diagonal)
-                // Opposite: lower-right triangle (below the diagonal)
-                (
-                    [
-                        imageproc::point::Point::new(x as i32, y as i32),
-                        imageproc::point::Point::new((x + w) as i32, y as i32),
-                        imageproc::point::Point::new(x as i32, (y + h) as i32),
-                    ],
-                    [
-                        imageproc::point::Point::new((x + w) as i32, y as i32),
-                        imageproc::point::Point::new(x as i32, (y + h) as i32),
-                        imageproc::point::Point::new((x + w) as i32, (y + h) as i32),
-                    ],
-                )
-            };
-            drawing::draw_polygon_mut(canvas, &primary_poly, color);
-            drawing::draw_polygon_mut(canvas, &opposite_poly, opposite_color);
-        } else if thickness <= 1 {
+        if thickness <= 1 {
             if dl.top_to_bottom {
                 drawing::draw_line_segment_mut(canvas, (x, y), (x + w, y + h), color);
             } else {
                 drawing::draw_line_segment_mut(canvas, (x, y + h), (x + w, y), color);
             }
         } else {
-            // Draw thick diagonal line as a filled polygon
+            // Draw thick diagonal as a one-sided band from the diagonal line,
+            // extending toward the interior of the bounding box, clipped to bounds.
             let (x0, y0, x1, y1) = if dl.top_to_bottom {
                 (x, y, x + w, y + h)
             } else {
@@ -363,17 +347,35 @@ impl Renderer {
             let dy = y1 - y0;
             let len = (dx * dx + dy * dy).sqrt();
             if len < 0.001 { return; }
-            let half_t = thickness as f32 / 2.0;
-            // Normal perpendicular to the line
-            let nx = -dy / len * half_t;
-            let ny = dx / len * half_t;
-            let poly = [
-                imageproc::point::Point::new((x0 + nx) as i32, (y0 + ny) as i32),
-                imageproc::point::Point::new((x0 - nx) as i32, (y0 - ny) as i32),
-                imageproc::point::Point::new((x1 - nx) as i32, (y1 - ny) as i32),
-                imageproc::point::Point::new((x1 + nx) as i32, (y1 + ny) as i32),
+            let t = thickness as f32;
+            // Normal direction pointing toward the interior of the bounding box.
+            // For L (\, top_to_bottom): line goes top-left to bottom-right,
+            //   interior is below-left, normal = (dy, -dx)/len = (h, -w)/len
+            // For R (/, !top_to_bottom): line goes bottom-left to top-right,
+            //   interior is below-right, normal = (-dy, dx)/len = (h, w)/len
+            let (nx, ny) = if dl.top_to_bottom {
+                // L: offset toward bottom-left → (dy/len, -dx/len)
+                (dy / len * t, -dx / len * t)
+            } else {
+                // R: offset toward bottom-right → (-dy/len, dx/len)
+                (-dy / len * t, dx / len * t)
+            };
+
+            let para = [
+                (x0, y0),
+                (x0 + nx, y0 + ny),
+                (x1 + nx, y1 + ny),
+                (x1, y1),
             ];
-            drawing::draw_polygon_mut(canvas, &poly, color);
+
+            let clipped = clip_polygon_to_rect(&para, x, y, x + w, y + h);
+            if clipped.len() >= 3 {
+                let points: Vec<imageproc::point::Point<i32>> = clipped
+                    .iter()
+                    .map(|(px, py)| imageproc::point::Point::new(*px as i32, *py as i32))
+                    .collect();
+                drawing::draw_polygon_mut(canvas, &points, color);
+            }
         }
     }
 
@@ -429,7 +431,14 @@ impl Renderer {
                 barcodes::code128::encode_no_mode(content, bc.barcode.height, bc.width)?
             }
             _ => {
-                let img = barcodes::code128::encode_auto(content, bc.barcode.height, bc.width)?;
+                // Modes U and D (UCC/EAN) automatically insert FNC1 at start per ZPL spec
+                let content_to_encode = match bc.barcode.mode {
+                    BarcodeMode::Ucc | BarcodeMode::Ean => {
+                        format!("{}{}", barcodes::code128::ESCAPE_FNC_1, content)
+                    }
+                    _ => content.clone(),
+                };
+                let img = barcodes::code128::encode_auto(&content_to_encode, bc.barcode.height, bc.width)?;
                 (img, content.clone())
             }
         };
@@ -440,7 +449,7 @@ impl Renderer {
         if bc.barcode.line {
             draw_barcode_interpretation_line(
                 canvas, &display_text, &pos, &img,
-                bc.barcode.orientation, bc.barcode.line_above,
+                bc.barcode.orientation, bc.barcode.line_above, bc.width,
             );
         }
         Ok(())
@@ -458,7 +467,7 @@ impl Renderer {
         if bc.barcode.line {
             draw_barcode_interpretation_line(
                 canvas, &bc.data, &pos, &img,
-                bc.barcode.orientation, bc.barcode.line_above,
+                bc.barcode.orientation, bc.barcode.line_above, bc.width,
             );
         }
         Ok(())
@@ -483,7 +492,7 @@ impl Renderer {
         if bc.barcode.line {
             draw_barcode_interpretation_line(
                 canvas, &content, &pos, &img,
-                bc.barcode.orientation, bc.barcode.line_above,
+                bc.barcode.orientation, bc.barcode.line_above, bc.width,
             );
         }
         Ok(())
@@ -507,7 +516,7 @@ impl Renderer {
             let display_text = format!("*{}*", bc.data);
             draw_barcode_interpretation_line(
                 canvas, &display_text, &pos, &img,
-                bc.barcode.orientation, bc.barcode.line_above,
+                bc.barcode.orientation, bc.barcode.line_above, bc.width,
             );
         }
         Ok(())
@@ -674,9 +683,11 @@ fn get_text_top_left_pos(text: &TextField, w: f64, h: f64, ascent: f64, state: &
     let (x, y) = state.get_text_position(text);
 
     if !text.position.calculate_from_bottom {
-        // ^FO: position is top-left of the field area. No fractional offsets needed.
-        // For non-Normal orientations, text is rendered to a buffer then rotated,
-        // so (x, y) is the top-left of the rotated bounding box.
+        // ^FO: position is top-left of the field area. Handle justification parameter.
+        let x = match text.alignment {
+            crate::elements::field_alignment::FieldAlignment::Right => x - w,
+            _ => x,
+        };
         return (x, y);
     }
 
@@ -701,6 +712,48 @@ fn line_color_to_rgba(color: LineColor) -> Rgba<u8> {
         LineColor::Black => Rgba([0, 0, 0, 255]),
         LineColor::White => Rgba([255, 255, 255, 255]),
     }
+}
+
+/// Sutherland-Hodgman polygon clipping against an axis-aligned rectangle.
+fn clip_polygon_to_rect(
+    polygon: &[(f32, f32)],
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
+) -> Vec<(f32, f32)> {
+    let mut output = polygon.to_vec();
+    // Each edge: (nx, ny, d) where inside = nx*x + ny*y + d >= 0
+    let edges: [(f32, f32, f32); 4] = [
+        (1.0, 0.0, -min_x),
+        (-1.0, 0.0, max_x),
+        (0.0, 1.0, -min_y),
+        (0.0, -1.0, max_y),
+    ];
+    for &(nx, ny, d) in &edges {
+        if output.is_empty() {
+            break;
+        }
+        let input = std::mem::take(&mut output);
+        let n = input.len();
+        for i in 0..n {
+            let cur = input[i];
+            let nxt = input[(i + 1) % n];
+            let cur_d = nx * cur.0 + ny * cur.1 + d;
+            let nxt_d = nx * nxt.0 + ny * nxt.1 + d;
+            if cur_d >= 0.0 {
+                output.push(cur);
+                if nxt_d < 0.0 {
+                    let t = cur_d / (cur_d - nxt_d);
+                    output.push((cur.0 + t * (nxt.0 - cur.0), cur.1 + t * (nxt.1 - cur.1)));
+                }
+            } else if nxt_d >= 0.0 {
+                let t = cur_d / (cur_d - nxt_d);
+                output.push((cur.0 + t * (nxt.0 - cur.0), cur.1 + t * (nxt.1 - cur.1)));
+            }
+        }
+    }
+    output
 }
 
 fn draw_filled_rect(canvas: &mut RgbaImage, x: i32, y: i32, w: i32, h: i32, color: Rgba<u8>) {
@@ -897,13 +950,16 @@ fn draw_barcode_interpretation_line(
     barcode_img: &RgbaImage,
     orientation: FieldOrientation,
     line_above: bool,
+    module_width: i32,
 ) {
     let font_data = FONT_DEJAVU_MONO;
     let font = match ab_glyph::FontRef::try_from_slice(font_data) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let font_size = 18.0f32;
+    // Zebra's interpretation line font scales with the barcode module width.
+    // At module_width=2 (default), the standard font is ~18px.
+    let font_size = (module_width.max(1) as f32 * 9.0).clamp(12.0, 72.0);
     let scale = PxScale { x: font_size, y: font_size };
 
     // Strip control characters (like FNC1 escape) from display text
