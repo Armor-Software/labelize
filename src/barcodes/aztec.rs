@@ -3,27 +3,43 @@ use rxing::aztec::AztecWriter;
 use rxing::{BarcodeFormat, EncodeHintValue, EncodeHints, Writer};
 
 /// Generate an Aztec barcode image using rxing's proper encoder.
-pub fn encode(
-    content: &str,
-    magnification: i32,
-    error_correction: i32,
-) -> Result<RgbaImage, String> {
+///
+/// The `ec_symbol_size` parameter follows ZPL ^BO spec:
+///   0       = default error correction
+///   1-99    = error correction percentage
+///   101-104 = compact Aztec with 1-4 layers
+///   201-232 = full-range Aztec with 1-32 layers
+///   300     = Aztec Rune (not yet supported, falls back to default)
+pub fn encode(content: &str, magnification: i32, ec_symbol_size: i32) -> Result<RgbaImage, String> {
     if content.is_empty() {
         return Err("Aztec: empty content".to_string());
     }
 
     let mag = magnification.max(1) as u32;
-    let ec_percent = if error_correction > 0 {
-        error_correction
-    } else {
-        23
-    };
 
     // Use rxing Aztec writer to get proper bit matrix
     let writer = AztecWriter;
     let mut hints = EncodeHints::default();
-    hints = hints.with(EncodeHintValue::ErrorCorrection(ec_percent.to_string()));
     hints = hints.with(EncodeHintValue::Margin("0".to_string()));
+
+    match ec_symbol_size {
+        // Compact Aztec: 101-104 -> AztecLayers(-1 to -4)
+        101..=104 => {
+            let layers = -(ec_symbol_size - 100);
+            hints = hints.with(EncodeHintValue::AztecLayers(layers));
+        }
+        // Full-range Aztec: 201-232 -> AztecLayers(1 to 32)
+        201..=232 => {
+            let layers = ec_symbol_size - 200;
+            hints = hints.with(EncodeHintValue::AztecLayers(layers));
+        }
+        // EC percentage: 1-99
+        1..=99 => {
+            hints = hints.with(EncodeHintValue::ErrorCorrection(ec_symbol_size.to_string()));
+        }
+        // 0, 300, or other: use rxing defaults
+        _ => {}
+    }
 
     // Encode with minimum size, we'll apply magnification ourselves
     let bit_matrix = writer

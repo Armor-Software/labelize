@@ -50,7 +50,7 @@
 ║ kmart                          │ zpl  │    7.10% │      813x1626 │      813x1626 │ MODERATE(<15%) ║
 ║ labelary                       │ zpl  │    3.35% │      813x1626 │      813x1626 │ MINOR(<5%)   ║
 ║ ontrac                         │ zpl  │    4.16% │      813x1626 │      813x1626 │ MINOR(<5%)   ║
-║ pnldpd                         │ zpl  │   10.51% │      813x1626 │      813x1626 │ MODERATE(<15%) ║
+║ pnldpd                         │ zpl  │   10.15% │      813x1626 │      813x1626 │ MODERATE(<15%) ║
 ║ pocztex                        │ zpl  │    3.74% │      813x1626 │      813x1626 │ MINOR(<5%)   ║
 ║ porterbuddy                    │ zpl  │    7.99% │      813x1626 │      813x1626 │ MODERATE(<15%) ║
 ║ posten                         │ zpl  │    1.96% │      813x1626 │      813x1626 │ MINOR(<5%)   ║
