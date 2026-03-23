@@ -1,4 +1,6 @@
-use crate::common::render_helpers;
+mod common;
+
+use common::render_helpers;
 use labelize::elements::drawer_options::DrawerOptions;
 use labelize::elements::graphic_box::GraphicBox;
 use labelize::elements::graphic_circle::GraphicCircle;

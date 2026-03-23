@@ -2,14 +2,15 @@
 /// against reference PNGs, and produces a detailed diff-percentage report.
 ///
 /// Run with:
-///   cargo test --test e2e diff_report -- --nocapture
+///   cargo test --test e2e_diff_report diff_report -- --nocapture
 ///
 /// The report is also written to `testdata/diffs/diff_report.txt`.
-use crate::common::image_compare;
-use crate::common::render_helpers;
+mod common;
+
+use common::image_compare;
+use common::render_helpers;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
-use std::path::Path;
 
 /// Entry for a single test case in the report.
 struct ReportEntry {
@@ -96,11 +97,6 @@ fn generate_diff_report() -> Vec<ReportEntry> {
         if let (Some(ref expected_img), Some(ref actual_img)) = (&result.expected_image, &result.actual_image) {
             image_compare::save_comparison_image(&name, expected_img, actual_img);
         }
-
-        // Save rendered image for side-by-side
-        let rendered_dir = dir.join("rendered");
-        std::fs::create_dir_all(&rendered_dir).ok();
-        std::fs::write(rendered_dir.join(format!("{}.png", name)), &actual_png).ok();
 
         let status = if result.diff_percent == 0.0 {
             "PERFECT"

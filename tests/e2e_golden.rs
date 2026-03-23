@@ -1,6 +1,7 @@
-use crate::common::image_compare;
-use crate::common::render_helpers;
-use std::path::Path;
+mod common;
+
+use common::image_compare;
+use common::render_helpers;
 
 /// Maximum allowed pixel-difference percentage for migrated tests.
 const MIGRATED_TOLERANCE: f64 = 50.0;

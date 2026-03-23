@@ -1,6 +1,8 @@
-use crate::common::image_compare;
-use crate::common::labelary_client;
-use crate::common::render_helpers;
+mod common;
+
+use common::image_compare;
+use common::labelary_client;
+use common::render_helpers;
 
 /// Tolerance for Labelary comparison tests.
 const LABELARY_TOLERANCE: f64 = 15.0;

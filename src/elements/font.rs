@@ -99,8 +99,9 @@ impl FontInfo {
             1.0
         } else if self.name == "0" {
             // Zebra font 0 (smooth scalable) width-to-height ratio.
-            // Calibrated via sweep: 0.55 minimizes moderate-diff labels overall.
-            0.55
+            // Per ZPL docs: "setting height and width equally produces characters that appear most balanced"
+            // This means when h=w, scale_x should be 1.0 (balanced/square proportions).
+            0.9
         } else {
             // Bitmap fonts A-H use DejaVu Mono (advance/em = 0.602051).
             // Ratio = 1/0.602051 so that advance * ratio * w = w (one char = w dots).

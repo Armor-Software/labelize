@@ -58,11 +58,17 @@ cargo build
 # Run all tests
 cargo test
 
-# Run e2e golden tests (compares rendered PNGs against Labelary reference images)
-cargo test --test e2e -- e2e --nocapture
+# Run all e2e tests (golden comparison against Labelary reference images)
+cargo test --test 'e2e_*'
 
-# Run unit tests only
-cargo test --test unit
+# Run all unit tests
+cargo test --test 'unit_*'
+
+# Run a specific test file
+cargo test --test unit_renderer
+
+# Run e2e golden tests with output
+cargo test --test e2e_golden -- --nocapture
 
 # Convert a label
 cargo run -- convert testdata/amazon.zpl
@@ -71,10 +77,11 @@ cargo run -- convert testdata/amazon.zpl
 ## Testing Conventions
 
 - **Golden tests** compare rendered PNGs pixel-by-pixel against reference images from Labelary
-- Reference images live in `testdata/rendered/`; diff outputs go to `testdata/diffs/`
+- Reference images live in `testdata/*.png`; diff outputs go to `testdata/diffs/`
 - Each label has a tolerance threshold documented in `docs/DIFF_THRESHOLDS.md`
-- After any rendering change, run `cargo test --test e2e` to verify diff percentages stay within tolerance
-- Unit tests for individual components are in `tests/unit/`
+- After any rendering change, run `cargo test --test e2e_golden` to verify diff percentages stay within tolerance
+- Test files follow naming convention: `tests/e2e_*.rs` for e2e tests, `tests/unit_*.rs` for unit tests
+- Shared test utilities are in `tests/common/` (not compiled as tests)
 
 ## Rendering Reference
 

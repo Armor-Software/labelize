@@ -1,4 +1,6 @@
-use crate::common::proptest_strategies;
+mod common;
+
+use common::proptest_strategies;
 use proptest::prelude::*;
 
 // --- Parser property tests ---
