@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# E2E tests for the labelize CLI installed via Homebrew.
+# Expects: labelize is on PATH, e2e/testdata/sample.zpl exists.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TESTDATA_DIR="$SCRIPT_DIR/../testdata"
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+ZPL_FILE="$TESTDATA_DIR/sample.zpl"
+
+pass=0
+fail=0
+
+assert_ok() {
+  local desc="$1"; shift
+  if "$@"; then
+    echo "  ✓ $desc"
+    pass=$((pass + 1))
+  else
+    echo "  ✗ $desc (exit $?)"
+    fail=$((fail + 1))
+  fi
+}
+
+assert_file_min_size() {
+  local desc="$1" file="$2" min_bytes="$3"
+  local size
+  size=$(wc -c < "$file" | tr -d ' ')
+  if [[ "$size" -ge "$min_bytes" ]]; then
+    echo "  ✓ $desc ($size bytes)"
+    pass=$((pass + 1))
+  else
+    echo "  ✗ $desc (expected >= $min_bytes bytes, got $size)"
+    fail=$((fail + 1))
+  fi
+}
+
+assert_file_header() {
+  local desc="$1" file="$2" expected_hex="$3"
+  local actual_hex
+  actual_hex=$(xxd -p -l "${#expected_hex}" "$file" | tr -d '\n' | head -c "${#expected_hex}")
+  # Compare case-insensitively
+  if [[ "${actual_hex,,}" == "${expected_hex,,}" ]]; then
+    echo "  ✓ $desc"
+    pass=$((pass + 1))
+  else
+    echo "  ✗ $desc (expected header $expected_hex, got $actual_hex)"
+    fail=$((fail + 1))
+  fi
+}
+
+echo "=== Labelize CLI E2E Tests ==="
+echo ""
+
+# 1. Version check
+echo "[1] Version"
+assert_ok "labelize --version exits 0" labelize --version
+
+# 2. Convert ZPL → PNG (default)
+echo "[2] Convert ZPL → PNG"
+cp "$ZPL_FILE" "$WORK_DIR/label.zpl"
+assert_ok "convert exits 0" labelize convert "$WORK_DIR/label.zpl"
+assert_file_min_size "output PNG has content" "$WORK_DIR/label.png" 500
+assert_file_header "output is valid PNG" "$WORK_DIR/label.png" "89504e47"
+
+# 3. Convert ZPL → PNG with explicit output path
+echo "[3] Convert ZPL → PNG (explicit output)"
+assert_ok "convert with -o exits 0" labelize convert "$ZPL_FILE" -o "$WORK_DIR/explicit.png"
+assert_file_min_size "explicit output PNG has content" "$WORK_DIR/explicit.png" 500
+
+# 4. Convert ZPL → PDF
+echo "[4] Convert ZPL → PDF"
+assert_ok "convert to PDF exits 0" labelize convert "$ZPL_FILE" -t pdf -o "$WORK_DIR/label.pdf"
+assert_file_min_size "output PDF has content" "$WORK_DIR/label.pdf" 500
+assert_file_header "output is valid PDF" "$WORK_DIR/label.pdf" "25504446"
+
+# 5. Convert with custom dimensions
+echo "[5] Convert with custom dimensions"
+assert_ok "convert with dimensions exits 0" labelize convert "$ZPL_FILE" -o "$WORK_DIR/custom.png" --width 100 --height 62 --dpmm 12
+assert_file_min_size "custom dimension PNG has content" "$WORK_DIR/custom.png" 200
+
+# 6. Format override
+echo "[6] Format override"
+cp "$ZPL_FILE" "$WORK_DIR/label.txt"
+assert_ok "convert with -f zpl exits 0" labelize convert "$WORK_DIR/label.txt" -f zpl -o "$WORK_DIR/override.png"
+assert_file_min_size "format-override PNG has content" "$WORK_DIR/override.png" 500
+
+echo ""
+echo "=== Results: $pass passed, $fail failed ==="
+[[ "$fail" -eq 0 ]] || exit 1

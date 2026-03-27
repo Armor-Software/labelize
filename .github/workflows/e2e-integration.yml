@@ -1,0 +1,76 @@
+name: E2E Integration
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── CLI E2E (install via Homebrew, test convert commands) ──────────
+  cli:
+    name: CLI E2E (Homebrew)
+    runs-on: macos-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install labelize via Homebrew
+        run: |
+          brew tap GOODBOY008/homebrew-labelize
+          brew install labelize
+
+      - name: Verify installation
+        run: labelize --version
+
+      - name: Run CLI E2E tests
+        run: |
+          chmod +x e2e/cli/test_cli.sh
+          bash e2e/cli/test_cli.sh
+
+  # ── HTTP E2E (install via Homebrew, test microservice) ────────────
+  http:
+    name: HTTP E2E (Homebrew)
+    runs-on: macos-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install labelize via Homebrew
+        run: |
+          brew tap GOODBOY008/homebrew-labelize
+          brew install labelize
+
+      - name: Verify installation
+        run: labelize --version
+
+      - name: Run HTTP E2E tests
+        run: |
+          chmod +x e2e/http/test_http.sh
+          bash e2e/http/test_http.sh
+
+  # ── SDK E2E (fetch from crates.io, run Rust integration tests) ───
+  sdk:
+    name: SDK E2E (crates.io)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: e2e/sdk
+
+      - name: Build SDK E2E project
+        working-directory: e2e/sdk
+        run: cargo build
+
+      - name: Run SDK integration tests
+        working-directory: e2e/sdk
+        run: cargo test -- --nocapture
