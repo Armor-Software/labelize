@@ -89,8 +89,8 @@ When you modify any rendering-related logic (parsers, elements, drawers, barcode
 
 1. Run `cargo test --test e2e_diff_report -- --nocapture` to regenerate all diff images and `testdata/diffs/diff_report.txt`
 2. Run `cargo test --test e2e_golden` to verify diff percentages stay within per-label tolerance thresholds
-2. Review the updated `testdata/diffs/diff_report.txt` to confirm diff percentages stay within tolerance
-3. **Commit the changed files in `testdata/diffs/`** (including updated `*.png` and `diff_report.txt`) as part of the same PR
+3. Review the updated `testdata/diffs/diff_report.txt` to confirm diff percentages stay within tolerance
+4. **Commit the changed files in `testdata/diffs/`** (including updated `*.png` and `diff_report.txt`) as part of the same PR
 
 This ensures PR reviewers can visually inspect the before/after rendering impact directly in the diff — left side is Labelary reference, right side is the current Labelize output.
 
