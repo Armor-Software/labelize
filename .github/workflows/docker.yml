@@ -21,7 +21,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: armorsoftware/labelize
+          images: daviamorim29/labelize
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
