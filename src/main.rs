@@ -255,6 +255,18 @@ async fn serve(host: String, port: u16) {
         8
     }
 
+    /// Maximum number of labels accepted in a single /convert request.
+    /// Override at runtime with the `LABELIZE_MAX_LABELS` env var.
+    const DEFAULT_MAX_LABELS: usize = 200;
+
+    fn max_labels_per_request() -> usize {
+        std::env::var("LABELIZE_MAX_LABELS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(DEFAULT_MAX_LABELS)
+    }
+
     async fn convert_handler(
         headers: HeaderMap,
         Query(params): Query<ConvertParams>,
@@ -277,12 +289,22 @@ async fn serve(host: String, port: u16) {
             Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
         };
 
-        let label = match labels.into_iter().next() {
-            Some(l) => l,
-            None => {
-                return (StatusCode::BAD_REQUEST, "No labels found".to_string()).into_response()
-            }
-        };
+        if labels.is_empty() {
+            return (StatusCode::BAD_REQUEST, "No labels found".to_string()).into_response();
+        }
+
+        let max_labels = max_labels_per_request();
+        if labels.len() > max_labels {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                format!(
+                    "Too many labels in request: {} (max {}). Override with LABELIZE_MAX_LABELS env var.",
+                    labels.len(),
+                    max_labels
+                ),
+            )
+                .into_response();
+        }
 
         let options = DrawerOptions {
             label_width_mm: params.width,
@@ -292,14 +314,31 @@ async fn serve(host: String, port: u16) {
         };
 
         let want_pdf = params.output.as_deref() == Some("pdf");
-
         let renderer = Renderer::new();
-        let mut buf = Cursor::new(Vec::new());
-        if let Err(e) = renderer.draw_label_as_png(&label, &mut buf, options.clone()) {
-            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+
+        // PNG output: only the first label is returned (single image — multi-PNG
+        // doesn't fit a single response). Multi-label clients should request PDF.
+        if !want_pdf {
+            let label = &labels[0];
+            let mut buf = Cursor::new(Vec::new());
+            if let Err(e) = renderer.draw_label_as_png(label, &mut buf, options.clone()) {
+                return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+            }
+            return (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "image/png")],
+                buf.into_inner(),
+            )
+                .into_response();
         }
 
-        if want_pdf {
+        // PDF output: render every parsed label and emit a multi-page PDF.
+        let mut imgs: Vec<image::RgbaImage> = Vec::with_capacity(labels.len());
+        for label in &labels {
+            let mut buf = Cursor::new(Vec::new());
+            if let Err(e) = renderer.draw_label_as_png(label, &mut buf, options.clone()) {
+                return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+            }
             let img = match image::load_from_memory(&buf.into_inner()) {
                 Ok(img) => img.to_rgba8(),
                 Err(e) => {
@@ -310,27 +349,22 @@ async fn serve(host: String, port: u16) {
                         .into_response()
                 }
             };
-            let mut pdf_buf = Cursor::new(Vec::new());
-            match labelize::encode_pdf(&img, &options, &mut pdf_buf) {
-                Ok(_) => (
-                    StatusCode::OK,
-                    [(header::CONTENT_TYPE, "application/pdf")],
-                    pdf_buf.into_inner(),
-                )
-                    .into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("pdf encode: {}", e),
-                )
-                    .into_response(),
+            imgs.push(img);
+        }
+
+        let mut pdf_buf = Cursor::new(Vec::new());
+        match labelize::encode_pdf_multi(&imgs, &options, &mut pdf_buf) {
+            Ok(_) => {
+                let mut response_headers = HeaderMap::new();
+                response_headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());
+                response_headers.insert("X-Label-Count", imgs.len().to_string().parse().unwrap());
+                (StatusCode::OK, response_headers, pdf_buf.into_inner()).into_response()
             }
-        } else {
-            (
-                StatusCode::OK,
-                [(header::CONTENT_TYPE, "image/png")],
-                buf.into_inner(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("pdf encode: {}", e),
             )
-                .into_response()
+                .into_response(),
         }
     }
 

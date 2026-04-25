@@ -13,6 +13,6 @@ pub use elements::drawer_options::DrawerOptions;
 pub use elements::label_info::LabelInfo;
 pub use error::LabelizeError;
 pub use images::monochrome::encode_png;
-pub use images::pdf::encode_pdf;
+pub use images::pdf::{encode_pdf, encode_pdf_multi};
 pub use parsers::epl_parser::EplParser;
 pub use parsers::zpl_parser::ZplParser;
