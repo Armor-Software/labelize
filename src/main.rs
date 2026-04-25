@@ -257,7 +257,7 @@ async fn serve(host: String, port: u16) {
 
     /// Maximum number of labels accepted in a single /convert request.
     /// Override at runtime with the `LABELIZE_MAX_LABELS` env var.
-    const DEFAULT_MAX_LABELS: usize = 200;
+    const DEFAULT_MAX_LABELS: usize = 800;
 
     fn max_labels_per_request() -> usize {
         std::env::var("LABELIZE_MAX_LABELS")
